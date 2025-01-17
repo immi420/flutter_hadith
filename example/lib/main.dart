@@ -1,67 +1,201 @@
+// example/lib/main.dart
+import 'package:flutter/material.dart';
 import 'package:flutter_hadith/flutter_hadith.dart';
 
-// Example Usage
+void main() {
+  runApp(const HadithExampleApp());
+}
 
-void main() async {
-  final hadithDB = HadithDatabase();
+class HadithExampleApp extends StatelessWidget {
+  const HadithExampleApp({super.key});
 
-  // Initialize the package with multiple Hadith database paths
-  await hadithDB.init(
-    assetPaths: [
-      // 'assets/musnad.db',
-      // 'assets/bukhari.db',
-      // 'assets/muslim.db',
-      // 'assets/abu_dawood.db',
-      // 'assets/tirmazi.db',
-      // 'assets/nasai.db',
-      // 'assets/maia.db',
-      // 'assets/mishkat.db',
-      'assets/silsila.db',
-    ],
-  );
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: const HadithExample(),
+      theme: ThemeData(
+        useMaterial3: true,
+        primarySwatch: Colors.green,
+      ),
+    );
+  }
+}
 
-  // Fetch the list of available Hadith databases
-  final availableBooks = hadithDB.getAvailableBooks();
-  print('Available Books: $availableBooks');
+class HadithExample extends StatefulWidget {
+  const HadithExample({super.key});
 
-  // Select a database to work with
-  const selectedDatabase = 'silsila.db';
+  @override
+  State<HadithExample> createState() => _HadithExampleState();
+}
 
-  // Fetch all book titles from the selected database
-  final books = await hadithDB.getAllBooks(selectedDatabase);
-  print('Books in $selectedDatabase: $books');
+class _HadithExampleState extends State<HadithExample> {
+  final HadithDatabase hadithDB = HadithDatabase();
+  String _log = '';
+  bool _isInitialized = false;
+  static const String selectedDatabase = 'silsila.db';
 
-  // Get chapters for a specific book (kitab_id = 1)
-  final chapters = await hadithDB.getChaptersForBook(selectedDatabase, 1);
-  print('Chapters for Book 1: $chapters');
+  @override
+  void initState() {
+    super.initState();
+    _initializeDatabase();
+  }
 
-  // Fetch a Hadith by ID
-  final hadith = await hadithDB.getHadithById(selectedDatabase, 1);
-  print('Hadith: $hadith');
+  void _addLog(String message) {
+    setState(() {
+      _log += '$message\n\n';
+    });
+  }
 
-  // Search for a Hadith containing specific text
-  final searchResults = await hadithDB.searchHadith(selectedDatabase, 'الحمد');
-  print('Search Results: $searchResults');
+  Future<void> _initializeDatabase() async {
+    try {
+      await hadithDB.init(
+        assetPaths: [
+          'assets/silsila.db',
+          // Add other database paths as needed
+          // 'assets/bukhari.db',
+          // 'assets/muslim.db',
+          // 'assets/abu_dawood.db',
+          // 'assets/tirmazi.db',
+          // 'assets/nasai.db',
+          // 'assets/maia.db',
+          // 'assets/mishkat.db',
+        ],
+      );
+      setState(() => _isInitialized = true);
+      _addLog('Database initialized successfully');
+    } catch (e) {
+      _addLog('Error initializing database: $e');
+    }
+  }
 
-  // Bookmark a Hadith
-  await hadithDB.bookmarkHadith(selectedDatabase, 1, true);
-  print('Hadith bookmarked.');
+  Future<void> _demonstrateAllFeatures() async {
+    if (!_isInitialized) {
+      _addLog('Database not initialized yet');
+      return;
+    }
 
-  // Fetch all bookmarked Hadiths
-  final bookmarkedHadiths =
-      await hadithDB.getBookmarkedHadiths(selectedDatabase);
-  print('Bookmarked Hadiths: $bookmarkedHadiths');
+    try {
+      // 1. Get available books
+      final availableBooks = hadithDB.getAvailableBooks();
+      _addLog('Available Books: $availableBooks');
 
-  // Fetch Hadiths by narrator
-  final hadithsByNarrator =
-      await hadithDB.getHadithsByNarrator(selectedDatabase, 'Abu Hurairah');
-  print('Hadiths by Narrator: $hadithsByNarrator');
+      // 2. Get all books from selected database
+      final books = await hadithDB.getAllBooks(selectedDatabase);
+      _addLog('Books in $selectedDatabase:');
+      for (var book in books) {
+        _addLog('- ${book.titleEnglish} (${book.titleUrdu})');
+      }
 
-  // Fetch Hadiths by chapter
-  final hadithsByChapter =
-      await hadithDB.getHadithsForChapter(selectedDatabase, 'Chapter Name');
-  print('Hadiths by Chapter: $hadithsByChapter');
+      // 3. Get chapters for first book
+      if (books.isNotEmpty) {
+        final chapters = await hadithDB.getChaptersForBook(
+          selectedDatabase,
+          books.first.id,
+        );
+        _addLog('Chapters in first book:');
+        for (var chapter in chapters) {
+          _addLog('- $chapter');
+        }
+      }
 
-  // Close all databases when done
-  await hadithDB.close();
+      // 4. Get specific Hadith
+      final hadith = await hadithDB.getHadithById(selectedDatabase, 1);
+      if (hadith != null) {
+        _addLog('First Hadith:');
+        _addLog('Arabic: ${hadith.arabicText}');
+        _addLog('Status: ${hadith.status}');
+
+        // 5. Get translations for this Hadith
+        final translations = await hadithDB.getTranslationsForHadith(
+          selectedDatabase,
+          hadith.id,
+        );
+        _addLog('Translations:');
+        for (var translation in translations) {
+          _addLog('- ${translation.translatedText}');
+        }
+
+        // 6. Bookmark the Hadith
+        await hadithDB.bookmarkHadith(selectedDatabase, hadith.id, true);
+        _addLog('Hadith bookmarked');
+      }
+
+      // 7. Get available languages
+      final languages = await hadithDB.getAvailableLanguages(selectedDatabase);
+      _addLog('Available Languages:');
+      for (var language in languages) {
+        _addLog('- ${language.name}');
+      }
+
+      // 8. Search for Hadith
+      final searchResults = await hadithDB.searchHadith(
+        selectedDatabase,
+        'الحمد',
+      );
+      _addLog('Search Results for "الحمد": ${searchResults.length} found');
+
+      // 9. Get bookmarked Hadiths
+      final bookmarked = await hadithDB.getBookmarkedHadiths(selectedDatabase);
+      _addLog('Bookmarked Hadiths: ${bookmarked.length}');
+
+      // 10. Get Hadiths by narrator
+      final narratorHadiths = await hadithDB.getHadithsByNarrator(
+        selectedDatabase,
+        'Abu Hurairah',
+      );
+      _addLog('Hadiths by Abu Hurairah: ${narratorHadiths.length}');
+
+      // 11. Get Hadiths by volume
+      final volumeHadiths = await hadithDB.getHadithsByVolume(
+        selectedDatabase,
+        1,
+      );
+      _addLog('Hadiths in Volume 1: ${volumeHadiths.length}');
+    } catch (e) {
+      _addLog('Error during demonstration: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Hadith Database Example'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ElevatedButton(
+              onPressed: _isInitialized ? _demonstrateAllFeatures : null,
+              child: const Text('Run All Features'),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  _log,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => setState(() => _log = ''),
+        child: const Icon(Icons.clear),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    hadithDB.close();
+    super.dispose();
+  }
 }
