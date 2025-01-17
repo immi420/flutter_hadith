@@ -7,32 +7,47 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 class HadithDatabase {
-  late Database _database;
+  late Map<String, Database> _databases;
 
-  // Initialize the database
-  Future<void> init({required String assetPath}) async {
+  // Initialize the databases
+  Future<void> init({required List<String> assetPaths}) async {
+    _databases = {};
     final dbDir = await getDatabasesPath();
-    final dbPath = join(dbDir, 'hadith_books.db');
 
-    // Copy the database from assets if not already present
-    if (!File(dbPath).existsSync()) {
-      ByteData data = await rootBundle.load(assetPath);
-      List<int> bytes =
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      await File(dbPath).writeAsBytes(bytes);
+    for (String assetPath in assetPaths) {
+      final dbName = basename(assetPath);
+      final dbPath = join(dbDir, dbName);
+
+      // Copy the database from assets if not already present
+      if (!File(dbPath).existsSync()) {
+        ByteData data = await rootBundle.load(assetPath);
+        List<int> bytes =
+            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        await File(dbPath).writeAsBytes(bytes);
+      }
+
+      final database = await openDatabase(dbPath);
+      _databases[dbName] = database;
     }
-
-    _database = await openDatabase(dbPath);
   }
 
-  // Fetch all book titles
-  Future<List<Map<String, dynamic>>> getAllBooks() async {
-    return await _database.query('tbl_Kitab');
+  // Fetch all available book databases
+  List<String> getAvailableBooks() {
+    return _databases.keys.toList();
+  }
+
+  // Fetch all book titles for a specific database
+  Future<List<Map<String, dynamic>>> getAllBooks(String dbName) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    return await db.query('tbl_Kitab');
   }
 
   // Get all chapters for a specific book
-  Future<List<String>> getChaptersForBook(int kitabId) async {
-    final result = await _database.query(
+  Future<List<String>> getChaptersForBook(String dbName, int kitabId) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees_languages',
       columns: ['DISTINCT baab'],
       where: 'kitab_id = ?',
@@ -42,8 +57,11 @@ class HadithDatabase {
   }
 
   // Fetch Hadith text by ID
-  Future<Map<String, dynamic>> getHadithById(int hadeesId) async {
-    final result = await _database.query(
+  Future<Map<String, dynamic>> getHadithById(
+      String dbName, int hadeesId) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees',
       where: 'record_id = ?',
       whereArgs: [hadeesId],
@@ -52,8 +70,11 @@ class HadithDatabase {
   }
 
   // Search Hadith text
-  Future<List<Map<String, dynamic>>> searchHadith(String query) async {
-    final result = await _database.rawQuery("""
+  Future<List<Map<String, dynamic>>> searchHadith(
+      String dbName, String query) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.rawQuery("""
       SELECT * FROM hadees 
       WHERE arabic LIKE ? OR arabic_without_aeraab LIKE ?
       """, ['%$query%', '%$query%']);
@@ -62,8 +83,10 @@ class HadithDatabase {
 
   // Fetch translations for a Hadith
   Future<List<Map<String, dynamic>>> getTranslationsForHadith(
-      int hadeesId) async {
-    final result = await _database.query(
+      String dbName, int hadeesId) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees_languages',
       where: 'hadees_id = ?',
       whereArgs: [hadeesId],
@@ -72,13 +95,19 @@ class HadithDatabase {
   }
 
   // Fetch available languages
-  Future<List<Map<String, dynamic>>> getAvailableLanguages() async {
-    return await _database.query('language');
+  Future<List<Map<String, dynamic>>> getAvailableLanguages(
+      String dbName) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    return await db.query('language');
   }
 
   // Fetch all Hadiths for a specific book
-  Future<List<Map<String, dynamic>>> getHadithsForBook(int kitabId) async {
-    final result = await _database.query(
+  Future<List<Map<String, dynamic>>> getHadithsForBook(
+      String dbName, int kitabId) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees',
       where: 'kitab_id = ?',
       whereArgs: [kitabId],
@@ -88,8 +117,10 @@ class HadithDatabase {
 
   // Fetch Hadiths by chapter (baab)
   Future<List<Map<String, dynamic>>> getHadithsForChapter(
-      String chapterName) async {
-    final result = await _database.query(
+      String dbName, String chapterName) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees_languages',
       where: 'baab = ?',
       whereArgs: [chapterName],
@@ -98,8 +129,11 @@ class HadithDatabase {
   }
 
   // Bookmark a Hadith
-  Future<void> bookmarkHadith(int hadeesId, bool isBookmarked) async {
-    await _database.update(
+  Future<void> bookmarkHadith(
+      String dbName, int hadeesId, bool isBookmarked) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    await db.update(
       'hadees',
       {'bookmarked': isBookmarked ? 1 : 0},
       where: 'record_id = ?',
@@ -108,8 +142,10 @@ class HadithDatabase {
   }
 
   // Fetch bookmarked Hadiths
-  Future<List<Map<String, dynamic>>> getBookmarkedHadiths() async {
-    final result = await _database.query(
+  Future<List<Map<String, dynamic>>> getBookmarkedHadiths(String dbName) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees',
       where: 'bookmarked = ?',
       whereArgs: [1],
@@ -119,8 +155,10 @@ class HadithDatabase {
 
   // Fetch Hadiths by narrator (Ravi)
   Future<List<Map<String, dynamic>>> getHadithsByNarrator(
-      String narrator) async {
-    final result = await _database.query(
+      String dbName, String narrator) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees_languages',
       where: 'ravi LIKE ?',
       whereArgs: ['%$narrator%'],
@@ -129,8 +167,11 @@ class HadithDatabase {
   }
 
   // Fetch Hadiths by volume
-  Future<List<Map<String, dynamic>>> getHadithsByVolume(int volume) async {
-    final result = await _database.query(
+  Future<List<Map<String, dynamic>>> getHadithsByVolume(
+      String dbName, int volume) async {
+    final db = _databases[dbName];
+    if (db == null) throw Exception('Database $dbName is not initialized.');
+    final result = await db.query(
       'hadees',
       where: 'volume = ?',
       whereArgs: [volume],
@@ -138,8 +179,10 @@ class HadithDatabase {
     return result;
   }
 
-  // Close the database
+  // Close all databases
   Future<void> close() async {
-    await _database.close();
+    for (var db in _databases.values) {
+      await db.close();
+    }
   }
 }
